@@ -236,7 +236,7 @@ if __name__ == '__main__':
     
     _chi = np.ones(chi.shape)
     _chi = processing.set2zero(_chi, domain_omega)
-    _F = np.linspace(0, 1000, 100)
+    _F = np.linspace(0, 1000, 1)
     _E = []
     _E_grad = []
     _E_start = []

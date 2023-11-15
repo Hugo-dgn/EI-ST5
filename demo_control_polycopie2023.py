@@ -161,7 +161,7 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
     (M, N) = np.shape(domain_omega)
     numb_iter = 4
     energy = np.zeros((numb_iter, 1), dtype=np.float64)
-    while k < numb_iter and mu > 1e-5:
+    while k < numb_iter and mu > mu_min:
         
         u = processing.solve_helmholtz(domain_omega, spacestep, omega, f, f_dir, f_neu, f_rob,
                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, chi*Alpha)
@@ -171,6 +171,7 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
         energy[k] = ene
         grad = -np.real(Alpha * p * u)
         while ene >= energy[k] and mu > mu_min:
+            print(ene)
             new_chi = chi.copy()
             new_chi = compute_gradient_descent(new_chi, grad, domain_omega, mu)
             new_chi = compute_projected(new_chi, domain_omega, V_obj)
@@ -256,10 +257,12 @@ if __name__ == '__main__':
 
     # -- define material density matrix
     chi = preprocessing._set_chi(M, N, x, y)
+    #chi = np.random.choice([0, 1], size=chi.shape)
+    
     chi = preprocessing.set2zero(chi, domain_omega)
 
     # -- define absorbing material
-    Alpha = 50.0 - 60.0 * 1j
+    Alpha = 10.0 - 10.0 * 1j
     # -- this is the function you have written during your project
     #import compute_alpha
     #Alpha = compute_alpha.compute_alpha(...)
@@ -273,7 +276,8 @@ if __name__ == '__main__':
                 S += 1
     V_0 = 1  # initial volume of the domain
     V_obj = np.sum(np.sum(chi)) / S  # constraint on the density
-    mu = 1e-3  # initial gradient step
+    V_obj = 0.5
+    mu = 1  # initial gradient step
     #mu_min = 1e-5  # minimal gradient step
     mu_min = 1e-10 # minimal gradient step
     mu1 = 10**(-5)  # parameter of the volume functional

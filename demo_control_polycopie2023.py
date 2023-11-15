@@ -171,7 +171,6 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
         energy[k] = ene
         grad = -np.real(Alpha * p * u)
         while ene >= energy[k] and mu > mu_min:
-            print(ene)
             new_chi = chi.copy()
             new_chi = compute_gradient_descent(new_chi, grad, domain_omega, mu)
             new_chi = compute_projected(new_chi, domain_omega, V_obj)

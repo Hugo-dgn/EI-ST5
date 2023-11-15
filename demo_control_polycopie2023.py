@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from tqdm.auto import tqdm
+import pickle
 
 # MRG packages
 import _env
@@ -14,7 +15,7 @@ import processing
 import postprocessing
 
 
-def compute_gradient_descent(chi, grad, domain, mu):
+"""def compute_gradient_descent(chi, grad, domain, mu):
     d = np.roll(grad, 1, axis=1)
     d[:, 0] = 0
 
@@ -31,7 +32,66 @@ def compute_gradient_descent(chi, grad, domain, mu):
     
     _chi = chi - mu * _grad
     _chi = processing.set2zero(_chi, domain)
-    return _chi
+    return _chi"""
+    
+def BelongsInteriorDomain(node):
+	if (node < 0):
+		return 1
+	if node == 3:
+		return 2
+	else:
+		return 0
+
+
+def compute_gradient_descent(chi, grad, domain, mu):
+	"""This function makes the gradient descent.
+	This function has to be used before the 'Projected' function that will project
+	the new element onto the admissible space.
+	:param chi: density of absorption define everywhere in the domain
+	:param grad: parametric gradient associated to the problem
+	:param domain: domain of definition of the equations
+	:param mu: step of the descent
+	:type chi: np.array((M,N), dtype=float64
+	:type grad: np.array((M,N), dtype=float64)
+	:type domain: np.array((M,N), dtype=int64)
+	:type mu: float
+	:return chi:
+	:rtype chi: np.array((M,N), dtype=float64
+
+	.. warnings also: It is important that the conditions be expressed with an "if",
+			not with an "elif", as some points are neighbours to multiple points
+			of the Robin frontier.
+	"""
+
+	(M, N) = np.shape(domain)
+	# for i in range(0, M):
+	# 	for j in range(0, N):
+	# 		if domain_omega[i, j] != _env.NODE_ROBIN:
+	# 			chi[i, j] = chi[i, j] - mu * grad[i, j]
+	# # for i in range(0, M):
+	# 	for j in range(0, N):
+	# 		if preprocessing.is_on_boundary(domain[i , j]) == 'BOUNDARY':
+	# 			chi[i,j] = chi[i,j] - mu*grad[i,j]
+	# print(domain,'jesuisla')
+	#chi[50,:] = chi[50,:] - mu*grad[50,:]
+	for i in range(1, M - 1):
+		for j in range(1, N - 1):
+			#print(i,j)
+			#chi[i,j] = chi[i,j] - mu * grad[i,j]
+			a = BelongsInteriorDomain(domain[i + 1, j])
+			b = BelongsInteriorDomain(domain[i - 1, j])
+			c = BelongsInteriorDomain(domain[i, j + 1])
+			d = BelongsInteriorDomain(domain[i, j - 1])
+			if a == 2:
+				chi[i + 1, j] = chi[i + 1, j] - mu * grad[i, j]
+			if b == 2:
+				chi[i - 1, j] = chi[i - 1, j] - mu * grad[i, j]
+			if c == 2:
+				chi[i, j + 1] = chi[i, j + 1] - mu * grad[i, j]
+			if d == 2:
+				chi[i, j - 1] = chi[i, j - 1] - mu * grad[i, j]
+
+	return chi
 
 
 def compute_projected(chi, domain, V_obj):
@@ -132,7 +192,6 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
     energy = energy[0:k]
     return chi, energy, u, grad
 
-
 def compute_objective_function(domain_omega, u, spacestep):
     """
     This function compute the objective function:
@@ -160,7 +219,7 @@ if __name__ == '__main__':
     # -- set parameters of the geometry
     N = 50  # number of points along x-axis
     M = 2 * N  # number of points along y-axis
-    level = 1 # level of the fractal
+    level = 0 # level of the fractal
     spacestep = 1.0 / N  # mesh size
 
     # -- set parameters of the partial differential equation
@@ -214,9 +273,9 @@ if __name__ == '__main__':
                 S += 1
     V_0 = 1  # initial volume of the domain
     V_obj = np.sum(np.sum(chi)) / S  # constraint on the density
-    mu = 1  # initial gradient step
+    mu = 1e-3  # initial gradient step
     #mu_min = 1e-5  # minimal gradient step
-    mu_min = 1e-5 # minimal gradient step
+    mu_min = 1e-10 # minimal gradient step
     mu1 = 10**(-5)  # parameter of the volume functional
 
     # ----------------------------------------------------------------------
@@ -236,30 +295,36 @@ if __name__ == '__main__':
     
     _chi = np.ones(chi.shape)
     _chi = processing.set2zero(_chi, domain_omega)
-    _F = np.linspace(0, 1000, 1000)
     _E = []
     _E_grad = []
     _E_start = []
-    for _f in tqdm(_F):
-        _omega = 2*np.pi*_f/340
-        _u = processing.solve_helmholtz(domain_omega, spacestep, _omega, f, f_dir, f_neu, f_rob,
-                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi.copy()*Alpha)
+    
+    skip = 100
+    
+    with open('optim_alpha_g1_config1.pkl', 'rb') as file:
+        alpha_ISOREL_OMEGA, alpha_ISOREL = pickle.load(file)
+    
+    for _w, _alpha in tqdm(zip(alpha_ISOREL_OMEGA[::skip], alpha_ISOREL[::skip]), total=len(alpha_ISOREL[::skip])):
+        _k = _w/340
+        
+        _u = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi.copy()*_alpha)
         _e = compute_objective_function(domain_omega, _u, spacestep)
         _E.append(_e)
         
-        _u_start = processing.solve_helmholtz(domain_omega, spacestep, _omega, f, f_dir, f_neu, f_rob,
+        _u_start = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
                         beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob)
         _e_start = compute_objective_function(domain_omega, _u_start, spacestep)
         _E_start.append(_e_start)
     
-        chi, energy, u, grad = optimization_procedure(domain_omega, spacestep, _omega, f, f_dir, f_neu, f_rob,
+        chi, energy, u, grad = optimization_procedure(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
                                                         beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
-                                                        Alpha, mu, chi, V_obj)
+                                                        _alpha, mu, chi, V_obj)
         _E_grad.append(np.min(energy))
     plt.figure()
-    plt.plot(_F, _E, label='absorbent everywhere')
-    plt.plot(_F, _E_grad, label='gradient descent')
-    plt.plot(_F, _E_start, label='start point')
+    plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E, label='absorbent everywhere')
+    plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_grad, label='gradient descent')
+    plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_start, label='start point')
     plt.xlabel('frequency')
     plt.ylabel('energy')
     plt.yscale('log')

@@ -145,6 +145,37 @@ def compute_projected(chi, domain, V_obj):
 
     return chi
 
+def compute_projected2(chi, domain, V_obj):
+    chi = processing.set2zero(chi, domain)
+    robin = domain == _env.NODE_ROBIN
+    S = domain[robin].size
+    
+    xmin = np.min(chi[robin])
+    xmax = np.max(chi[robin])
+    x = xmin 
+    
+    new_chi = chi.copy()
+    new_chi[chi < x] = 0
+    new_chi[chi >= x] = 1
+    
+    V = np.sum(np.abs(new_chi[robin]))/S
+    
+    while np.abs(V - V_obj) > 1e-1:
+        if V > V_obj:
+            xmin = x
+            x = (xmax + x)/2
+        else:
+            xmax = x
+            x = (x + xmin)/2
+        
+        new_chi[chi < x] = 0
+        new_chi[chi >= x] = 1
+        
+        V = np.sum(np.abs(new_chi[robin]))/S
+    
+    return new_chi
+        
+
 def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_rob,
                            beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
                            Alpha, mu, chi, V_obj):
@@ -162,7 +193,6 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
     numb_iter = 4
     energy = np.zeros((numb_iter, 1), dtype=np.float64)
     while k < numb_iter and mu > mu_min:
-        
         u = processing.solve_helmholtz(domain_omega, spacestep, omega, f, f_dir, f_neu, f_rob,
                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, chi*Alpha)
         p = processing.solve_helmholtz(domain_omega, spacestep, omega, -2*np.conjugate(u), np.zeros(f_dir.shape), f_neu, f_rob,
@@ -186,8 +216,9 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
             
             
             ene = new_ene
-            
-        chi = new_chi.copy()
+        
+        if ene <= energy[k]: 
+            chi = compute_projected2(new_chi, domain_omega, V_obj)
         k += 1
 
     energy = energy[0:k]
@@ -220,7 +251,7 @@ if __name__ == '__main__':
     # -- set parameters of the geometry
     N = 50  # number of points along x-axis
     M = 2 * N  # number of points along y-axis
-    level = 0 # level of the fractal
+    level = 2 # level of the fractal
     spacestep = 1.0 / N  # mesh size
 
     # -- set parameters of the partial differential equation
@@ -332,7 +363,7 @@ if __name__ == '__main__':
         
         _u_rand = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
                         beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_rand.copy()*_alpha)
-        _e_rand = compute_objective_function(domain_omega, _u, spacestep)
+        _e_rand = compute_objective_function(domain_omega, _u_rand, spacestep)
         _E_rand.append(_e)
         
         

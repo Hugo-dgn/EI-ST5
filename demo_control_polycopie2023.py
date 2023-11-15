@@ -160,7 +160,9 @@ def compute_projected2(chi, domain, V_obj):
     
     V = np.sum(np.abs(new_chi[robin]))/S
     
-    while np.abs(V - V_obj) > 1e-1:
+    i = 0
+    
+    while np.abs(V - V_obj) > 1e-1 and i < 100:
         if V > V_obj:
             xmin = x
             x = (xmax + x)/2
@@ -172,6 +174,8 @@ def compute_projected2(chi, domain, V_obj):
         new_chi[chi >= x] = 1
         
         V = np.sum(np.abs(new_chi[robin]))/S
+        
+        i += 1
     
     return new_chi
         

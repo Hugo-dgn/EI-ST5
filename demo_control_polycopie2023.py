@@ -251,7 +251,7 @@ if __name__ == '__main__':
     # -- set parameters of the geometry
     N = 50  # number of points along x-axis
     M = 2 * N  # number of points along y-axis
-    level = 2 # level of the fractal
+    level = 0 # level of the fractal
     spacestep = 1.0 / N  # mesh size
 
     # -- set parameters of the partial differential equation
@@ -364,7 +364,7 @@ if __name__ == '__main__':
         _u_rand = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
                         beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_rand.copy()*_alpha)
         _e_rand = compute_objective_function(domain_omega, _u_rand, spacestep)
-        _E_rand.append(_e)
+        _E_rand.append(_e_rand)
         
         
     plt.figure()

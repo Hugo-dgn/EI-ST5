@@ -313,7 +313,7 @@ if __name__ == '__main__':
         _E.append(_e)
         
         _u_start = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
-                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob)
+                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, chi.copy()*_alpha)
         _e_start = compute_objective_function(domain_omega, _u_start, spacestep)
         _E_start.append(_e_start)
     

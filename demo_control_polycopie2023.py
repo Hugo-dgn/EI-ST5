@@ -184,6 +184,7 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
                 # The step is decreased is the energy increased
                 mu = mu / 10
             
+            
             ene = new_ene
             
         chi = new_chi.copy()
@@ -226,7 +227,7 @@ if __name__ == '__main__':
     kx = -1.0
     ky = -1.0
     wavenumber = np.sqrt(kx**2 + ky**2)  # wavenumber
-    wavenumber = 10.0
+    wavenumber = 2*np.pi*100/340
 
     # ----------------------------------------------------------------------
     # -- Do not modify this cell, these are the values that you will be assessed against.
@@ -256,7 +257,7 @@ if __name__ == '__main__':
 
     # -- define material density matrix
     chi = preprocessing._set_chi(M, N, x, y)
-    #chi = np.random.choice([0, 1], size=chi.shape)
+    #chi = preprocessing._set_random_chi(M, N, x, y)
     
     chi = preprocessing.set2zero(chi, domain_omega)
 
@@ -298,10 +299,14 @@ if __name__ == '__main__':
     
     _chi = np.ones(chi.shape)
     _chi = processing.set2zero(_chi, domain_omega)
+    
+    _chi_rand = preprocessing._set_random_chi(M, N, x, y)
+    _chi_rand = processing.set2zero(_chi_rand, domain_omega)
+    
     _E = []
     _E_grad = []
     _E_start = []
-    
+    _E_rand = []
     skip = 10
     
     with open('optim_alpha_g1_config1.pkl', 'rb') as file:
@@ -322,11 +327,19 @@ if __name__ == '__main__':
     
         chi, energy, u, grad = optimization_procedure(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
                                                         beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
-                                                        _alpha, mu, chi, V_obj)
+                                                          _alpha, mu, chi.copy(), V_obj)
         _E_grad.append(np.min(energy))
+        
+        _u_rand = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_rand.copy()*_alpha)
+        _e_rand = compute_objective_function(domain_omega, _u, spacestep)
+        _E_rand.append(_e)
+        
+        
     plt.figure()
     plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E, label='absorbent everywhere')
     plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_grad, label='gradient descent')
+    plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_rand, label='random')
     #plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_start, label='start point')
     plt.xlabel('frequency')
     plt.ylabel('energy')
@@ -334,6 +347,7 @@ if __name__ == '__main__':
     plt.legend(loc='upper right')
     
     plt.savefig('energy_freq.png')
+
     
     
     """chi, energy, u, grad = optimization_procedure(domain_omega, spacestep, wavenumber, f, f_dir, f_neu, f_rob,

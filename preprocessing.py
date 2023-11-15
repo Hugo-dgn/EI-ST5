@@ -109,6 +109,10 @@ def _set_chi(M, N, x, y):
         chi[int(y[k]), int(x[k])] = val
     return chi
 
+def _set_random_chi(M, N, x, y):
+    chi = numpy.random.choice([0, 1], size=(M, N), p=[0.5, 0.5])
+    return chi
+
 
 def create_motif_koch(A, B):
     """

@@ -162,7 +162,7 @@ def compute_projected2(chi, domain, V_obj):
     
     i = 0
     
-    while np.abs(V - V_obj) > 1e-1 and i < 100:
+    while np.abs(V - V_obj) > 1e-3 and i < 100:
         if V > V_obj:
             xmin = x
             x = (xmax + x)/2
@@ -195,16 +195,24 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
     k = 0
     (M, N) = np.shape(domain_omega)
     numb_iter = 4
-    energy = np.zeros((numb_iter, 1), dtype=np.float64)
+    energy = []
     while k < numb_iter and mu > mu_min:
         u = processing.solve_helmholtz(domain_omega, spacestep, omega, f, f_dir, f_neu, f_rob,
                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, chi*Alpha)
         p = processing.solve_helmholtz(domain_omega, spacestep, omega, -2*np.conjugate(u), np.zeros(f_dir.shape), f_neu, f_rob,
                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, chi*Alpha)
         ene = compute_objective_function(domain_omega, u, spacestep)
-        energy[k] = ene
         grad = -np.real(Alpha * p * u)
-        while ene >= energy[k] and mu > mu_min:
+        
+        if len(energy) == 0:
+            energy.append(ene)
+        elif ene < energy[-1]:
+            energy.append(ene)
+            
+        comp_ene = energy[-1]
+        
+        _chi = None
+        while ene >= comp_ene/1.5 and mu > mu_min:
             new_chi = chi.copy()
             new_chi = compute_gradient_descent(new_chi, grad, domain_omega, mu)
             new_chi = compute_projected(new_chi, domain_omega, V_obj)
@@ -218,15 +226,91 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
                 # The step is decreased is the energy increased
                 mu = mu / 10
             
+            if new_ene < energy[-1]:
+                energy.append(new_ene)
+                _chi = new_chi.copy()
+            
+            
+            ene = new_ene
+        if _chi is None:
+            break
+        else:
+            chi = _chi.copy()
+        k += 1
+
+    energy = np.array(energy).reshape(-1,1)
+    return chi, energy, u, grad
+
+def multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, f_neu, f_rob,
+                           beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
+                           Alpha, mu, chi, V_obj):
+    """This function return the optimized density.
+
+    Parameter:
+        cf solvehelmholtz's remarks
+        Alpha: complex, it corresponds to the absorbtion coefficient;
+        mu: float, it is the initial step of the gradient's descent;
+        V_obj: float, it characterizes the volume constraint on the density chi.
+    """
+
+    k = 0
+    (M, N) = np.shape(domain_omega)
+    numb_iter = 4
+    energy = []
+    while k < numb_iter and mu > mu_min:
+        list_u = []
+        grad = np.zeros(chi.shape)
+        
+        for omega in list_omega:
+            u = processing.solve_helmholtz(domain_omega, spacestep, omega, f, f_dir, f_neu, f_rob,
+                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, chi*Alpha)
+            p = processing.solve_helmholtz(domain_omega, spacestep, omega, -2*np.conjugate(u), np.zeros(f_dir.shape), f_neu, f_rob,
+                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, chi*Alpha)
+            
+            list_u.append(u)
+            
+            grad += -np.real(Alpha * p * u)
+        
+        ene = compute_multi_objective_function(domain_omega, list_u, spacestep)
+        
+        if len(energy) == 0:
+            energy.append(ene)
+        elif ene < energy[-1]:
+            energy.append(ene)
+            
+        comp_ene = energy[-1]
+        
+        while ene >= comp_ene/1.5 and mu > mu_min:
+            new_chi = chi.copy()
+            new_chi = compute_gradient_descent(new_chi, grad, domain_omega, mu)
+            new_chi = compute_projected(new_chi, domain_omega, V_obj)
+            
+            list_new_u = []
+            for omega in list_omega:
+                new_u = processing.solve_helmholtz(domain_omega, spacestep, omega, f, f_dir, f_neu, f_rob,
+                                            beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, new_chi*Alpha)
+                list_new_u.append(new_u)
+                
+            new_ene = compute_multi_objective_function(domain_omega, list_new_u, spacestep)
+            if new_ene < ene:
+                # The step is increased if the energy decreased
+                mu = mu / 2
+            else:
+                # The step is decreased is the energy increased
+                mu = mu / 10
+            
+            if new_ene < energy[-1]:
+                energy.append(new_ene)
+                _chi = new_chi.copy()
+            
             
             ene = new_ene
         
-        if ene <= energy[k]: 
-            chi = compute_projected2(new_chi, domain_omega, V_obj)
+        chi = _chi.copy()
         k += 1
 
-    energy = energy[0:k]
-    return chi, energy, u, grad
+    energy = np.array(energy).reshape(-1,1)
+    return chi, energy, list_u, grad
 
 def compute_objective_function(domain_omega, u, spacestep):
     """
@@ -246,6 +330,25 @@ def compute_objective_function(domain_omega, u, spacestep):
 
     return energy
 
+def compute_multi_objective_function(domain_omega, list_u, spacestep):
+    """
+    This function compute the objective function:
+    J(u,domain_omega)= \int_{domain_omega}||u||^2 
+
+    Parameter:
+        domain_omega: Matrix (NxP), it defines the domain and the shape of the
+        Robin frontier;
+        u: Matrix (NxP), it is the solution of the Helmholtz problem, we are
+        computing its energy;
+        spacestep: float, it corresponds to the step used to solve the Helmholtz
+        equation.
+    """
+    energy = 0
+    for u in list_u:
+        energy += compute_objective_function(domain_omega, u, spacestep)
+
+    return energy
+
 
 if __name__ == '__main__':
 
@@ -257,6 +360,8 @@ if __name__ == '__main__':
     M = 2 * N  # number of points along y-axis
     level = 0 # level of the fractal
     spacestep = 1.0 / N  # mesh size
+    
+    list_omega = np.array([180, 350, 524, 693, 862])/340
 
     # -- set parameters of the partial differential equation
     kx = -1.0
@@ -337,11 +442,15 @@ if __name__ == '__main__':
     
     _chi_rand = preprocessing._set_random_chi(M, N, x, y)
     _chi_rand = processing.set2zero(_chi_rand, domain_omega)
+    #_chi_multi, _, _, _ = multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, f_neu, f_rob,
+    #                                                    beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
+    #                                                        Alpha, mu, chi.copy(), V_obj)
     
     _E = []
     _E_grad = []
     _E_start = []
     _E_rand = []
+    _E_multi = []
     skip = 5
     
     with open('optim_alpha_g1_config1.pkl', 'rb') as file:
@@ -365,6 +474,11 @@ if __name__ == '__main__':
                                                           _alpha, mu, chi.copy(), V_obj)
         _E_grad.append(np.min(energy))
         
+        #_u_multi = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+        #                beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_multi.copy()*_alpha)
+        #_e_multi = compute_objective_function(domain_omega, _u_multi, spacestep)
+        #_E_multi.append(_e_multi)
+        
         #_u_rand = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
         #                beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_rand.copy()*_alpha)
         #_e_rand = compute_objective_function(domain_omega, _u_rand, spacestep)
@@ -374,6 +488,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E, label='absorbent everywhere')
     plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_grad, label='gradient descent')
+    #plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_multi, label='multi')
     #plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_rand, label='random')
     #plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_start, label='start point')
     plt.xlabel('frequency')
@@ -389,7 +504,13 @@ if __name__ == '__main__':
                                                         beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
                                                         Alpha, mu, chi, V_obj)
     
+    #chi, energy, u, grad = multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, f_neu, f_rob,
+    #                                                    beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
+    #                                                    Alpha, mu, chi, V_obj)
+    #u = u[0]
+    
     chin = chi.copy()
+    chin = compute_projected2(chin, domain_omega, V_obj)
     un = u.copy()
 
     # -- plot chi, u, and energy
@@ -398,5 +519,4 @@ if __name__ == '__main__':
     err = un - u0
     postprocessing._plot_error(err)
     postprocessing._plot_energy_history(energy)
-    plt.show()
     print('End.')"""

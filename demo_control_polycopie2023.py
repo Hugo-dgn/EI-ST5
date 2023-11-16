@@ -213,7 +213,7 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
             new_ene = compute_objective_function(domain_omega, new_u, spacestep)
             if new_ene < ene:
                 # The step is increased if the energy decreased
-                mu = mu * 1.1
+                mu = mu / 2
             else:
                 # The step is decreased is the energy increased
                 mu = mu / 10

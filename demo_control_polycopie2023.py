@@ -342,7 +342,7 @@ if __name__ == '__main__':
     _E_grad = []
     _E_start = []
     _E_rand = []
-    skip = 10
+    skip = 5
     
     with open('optim_alpha_g1_config1.pkl', 'rb') as file:
         alpha_ISOREL_OMEGA, alpha_ISOREL = pickle.load(file)
@@ -365,16 +365,16 @@ if __name__ == '__main__':
                                                           _alpha, mu, chi.copy(), V_obj)
         _E_grad.append(np.min(energy))
         
-        _u_rand = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
-                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_rand.copy()*_alpha)
-        _e_rand = compute_objective_function(domain_omega, _u_rand, spacestep)
-        _E_rand.append(_e_rand)
+        #_u_rand = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+        #                beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_rand.copy()*_alpha)
+        #_e_rand = compute_objective_function(domain_omega, _u_rand, spacestep)
+        #_E_rand.append(_e_rand)
         
         
     plt.figure()
     plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E, label='absorbent everywhere')
     plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_grad, label='gradient descent')
-    plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_rand, label='random')
+    #plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_rand, label='random')
     #plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_start, label='start point')
     plt.xlabel('frequency')
     plt.ylabel('energy')

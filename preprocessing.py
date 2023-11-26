@@ -113,6 +113,16 @@ def _set_random_chi(M, N, x, y):
     chi = numpy.random.choice([0, 1], size=(M, N), p=[0.5, 0.5])
     return chi
 
+def _set_even_chi(M, N, x, y):
+    n = int(len(x)/3) + 1
+    
+    chi = numpy.zeros((M, N), dtype=numpy.float64)
+    for k in range(0, len(x) - 1):
+        if k % n < n/2:
+            chi[int(y[k]), int(x[k])] = 1
+    
+    return chi
+
 
 def create_motif_koch(A, B):
     """

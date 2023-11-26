@@ -241,9 +241,9 @@ def optimization_procedure(domain_omega, spacestep, omega, f, f_dir, f_neu, f_ro
     energy = np.array(energy).reshape(-1,1)
     return chi, energy, u, grad
 
-def multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, f_neu, f_rob,
+def multi_optimization_procedure(domain_omega, spacestep, list_omega, alpha_OMEGA, f, f_dir, f_neu, f_rob,
                            beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
-                           Alpha, mu, chi, V_obj):
+                           alpha_ISOREL, mu, chi, V_obj):
     """This function return the optimized density.
 
     Parameter:
@@ -252,7 +252,9 @@ def multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, 
         mu: float, it is the initial step of the gradient's descent;
         V_obj: float, it characterizes the volume constraint on the density chi.
     """
-
+    _l = np.abs(alpha_OMEGA - list_omega.reshape(-1, 1))
+    indices = np.argmin(_l, axis=1)
+    list_alpha = np.array(alpha_ISOREL)[indices]
     k = 0
     (M, N) = np.shape(domain_omega)
     numb_iter = 4
@@ -261,7 +263,7 @@ def multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, 
         list_u = []
         grad = np.zeros(chi.shape)
         
-        for omega in list_omega:
+        for omega, Alpha in zip(list_omega, list_alpha):
             u = processing.solve_helmholtz(domain_omega, spacestep, omega, f, f_dir, f_neu, f_rob,
                                         beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, chi*Alpha)
             p = processing.solve_helmholtz(domain_omega, spacestep, omega, -2*np.conjugate(u), np.zeros(f_dir.shape), f_neu, f_rob,
@@ -280,13 +282,16 @@ def multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, 
             
         comp_ene = energy[-1]
         
+        
+        _chi = None
         while ene >= comp_ene/1.5 and mu > mu_min:
+            print(ene)
             new_chi = chi.copy()
             new_chi = compute_gradient_descent(new_chi, grad, domain_omega, mu)
             new_chi = compute_projected(new_chi, domain_omega, V_obj)
             
             list_new_u = []
-            for omega in list_omega:
+            for omega, Alpha in zip(list_omega, list_alpha):
                 new_u = processing.solve_helmholtz(domain_omega, spacestep, omega, f, f_dir, f_neu, f_rob,
                                             beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, new_chi*Alpha)
                 list_new_u.append(new_u)
@@ -305,8 +310,10 @@ def multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, 
             
             
             ene = new_ene
-        
-        chi = _chi.copy()
+        if _chi is None:
+            break
+        else:
+            chi = _chi.copy()
         k += 1
 
     energy = np.array(energy).reshape(-1,1)
@@ -358,16 +365,14 @@ if __name__ == '__main__':
     # -- set parameters of the geometry
     N = 50  # number of points along x-axis
     M = 2 * N  # number of points along y-axis
-    level = 0 # level of the fractal
+    level =  0# level of the fractal
     spacestep = 1.0 / N  # mesh size
-    
-    list_omega = np.array([180, 350, 524, 693, 862])/340
 
     # -- set parameters of the partial differential equation
     kx = -1.0
     ky = -1.0
     wavenumber = np.sqrt(kx**2 + ky**2)  # wavenumber
-    wavenumber = 2*np.pi*100/340
+    wavenumber = 2*np.pi*159/340
 
     # ----------------------------------------------------------------------
     # -- Do not modify this cell, these are the values that you will be assessed against.
@@ -396,13 +401,13 @@ if __name__ == '__main__':
     alpha_rob[:, :] = - wavenumber * 1j
 
     # -- define material density matrix
-    chi = preprocessing._set_chi(M, N, x, y)
+    chi = preprocessing._set_even_chi(M, N, x, y)
     #chi = preprocessing._set_random_chi(M, N, x, y)
     
     chi = preprocessing.set2zero(chi, domain_omega)
 
     # -- define absorbing material
-    Alpha = 10.0 - 10.0 * 1j
+    Alpha = 30.0 - 30.0 * 1j
     # -- this is the function you have written during your project
     #import compute_alpha
     #Alpha = compute_alpha.compute_alpha(...)
@@ -416,8 +421,13 @@ if __name__ == '__main__':
                 S += 1
     V_0 = 1  # initial volume of the domain
     V_obj = np.sum(np.sum(chi)) / S  # constraint on the density
-    V_obj = 0.5
-    mu = 1  # initial gradient step
+    V_obj = 0.4
+    
+    #chi = chi/np.sum(np.abs(chi))*V_obj
+    
+    #chi = V_obj*chi
+    
+    mu = 1e-2  # initial gradient step
     #mu_min = 1e-5  # minimal gradient step
     mu_min = 1e-10 # minimal gradient step
     mu1 = 10**(-5)  # parameter of the volume functional
@@ -442,42 +452,83 @@ if __name__ == '__main__':
     
     _chi_rand = preprocessing._set_random_chi(M, N, x, y)
     _chi_rand = processing.set2zero(_chi_rand, domain_omega)
-    #_chi_multi, _, _, _ = multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, f_neu, f_rob,
-    #                                                    beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
-    #                                                        Alpha, mu, chi.copy(), V_obj)
     
-    _E = []
+    _E_isorel = []
+    _E_liner = []
+    _E_aero = []
     _E_grad = []
     _E_start = []
     _E_rand = []
-    _E_multi = []
-    skip = 5
+    _E_multi_isorel = []
+    _E_multi_liner = []
+    _E_multi_aero = []
+    skip = 1
     
+    with open('optim_alpha_g1_config4.pkl', 'rb') as file:
+        alpha_OMEGA, alpha_ISOREL = pickle.load(file)
+        
     with open('optim_alpha_g1_config1.pkl', 'rb') as file:
-        alpha_ISOREL_OMEGA, alpha_ISOREL = pickle.load(file)
+        alpha_OMEGA, alpha_LINER = pickle.load(file)
+        
+    with open('optim_alpha_g1_config5.pkl', 'rb') as file:
+        alpha_OMEGA, alpha_AERO = pickle.load(file)
+     
+     
+    _liste_omega = 2*np.pi*np.array([177, 348, 524, 688, 860])
     
-    for _w, _alpha in tqdm(zip(alpha_ISOREL_OMEGA[::skip], alpha_ISOREL[::skip]), total=len(alpha_ISOREL[::skip])):
+    _chi_multi_isorel, _energy_multi_isorel, _, _ = multi_optimization_procedure(domain_omega, spacestep, _liste_omega/340, alpha_OMEGA/340, f, f_dir, f_neu, f_rob,
+                                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
+                                                            alpha_ISOREL, mu, chi.copy(), V_obj)
+    _chi_multi_liner, _energy_multi_liner, _, _ = multi_optimization_procedure(domain_omega, spacestep, _liste_omega/340, alpha_OMEGA/340, f, f_dir, f_neu, f_rob,
+                                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
+                                                            alpha_LINER, mu, chi.copy(), V_obj)
+    
+    _chi_multi_aero, _energy_multi_aero, _, _ = multi_optimization_procedure(domain_omega, spacestep, _liste_omega/340, alpha_OMEGA/340, f, f_dir, f_neu, f_rob,
+                                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
+                                                            alpha_AERO, mu, chi.copy(), V_obj)
+    
+    for _w, _alpha_isorel, _alpha_liner, _alpha_aero in tqdm(zip(alpha_OMEGA[::skip], alpha_ISOREL[::skip], alpha_LINER[::skip], alpha_AERO[::skip]), total=len(alpha_ISOREL[::skip])):
         _k = _w/340
         
-        _u = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
-                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi.copy()*_alpha)
-        _e = compute_objective_function(domain_omega, _u, spacestep)
-        _E.append(_e)
+        _u_isorel = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _alpha_isorel*_chi.copy())
+        _e_isorel = compute_objective_function(domain_omega, _u_isorel, spacestep)
+        _E_isorel.append(_e_isorel)
+        
+        """_u_liner = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _alpha_liner*_chi.copy())
+        _e_liner = compute_objective_function(domain_omega, _u_liner, spacestep)
+        _E_liner.append(_e_liner)
+        
+        _u_aero = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _alpha_aero*_chi.copy())
+        _e_aero = compute_objective_function(domain_omega, _u_aero, spacestep)
+        _E_aero.append(_e_aero)"""
         
         #_u_start = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
         #                beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, chi.copy()*_alpha)
         #_e_start = compute_objective_function(domain_omega, _u_start, spacestep)
         #_E_start.append(_e_start)
     
-        chi, energy, u, grad = optimization_procedure(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
-                                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
-                                                          _alpha, mu, chi.copy(), V_obj)
-        _E_grad.append(np.min(energy))
+        #chi, energy, u, grad = optimization_procedure(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+        #                                                beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
+        #                                                  _alpha, mu, chi.copy(), V_obj)
+        #_E_grad.append(np.min(energy))
         
-        #_u_multi = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
-        #                beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_multi.copy()*_alpha)
-        #_e_multi = compute_objective_function(domain_omega, _u_multi, spacestep)
-        #_E_multi.append(_e_multi)
+        _u_multi_isorel = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_multi_isorel.copy()*_alpha_isorel)
+        _e_multi_isorel = compute_objective_function(domain_omega, _u_multi_isorel, spacestep)
+        _E_multi_isorel.append(_e_multi_isorel)
+        
+        _u_multi_liner = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_multi_liner.copy()*_alpha_liner)
+        _e_multi_liner = compute_objective_function(domain_omega, _u_multi_liner, spacestep)
+        _E_multi_liner.append(_e_multi_liner)
+        
+        _u_multi_aero = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
+                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_multi_aero.copy()*_alpha_aero)
+        _e_multi_aero = compute_objective_function(domain_omega, _u_multi_aero, spacestep)
+        _E_multi_aero.append(_e_multi_aero)
         
         #_u_rand = processing.solve_helmholtz(domain_omega, spacestep, _k, f, f_dir, f_neu, f_rob,
         #                beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, _chi_rand.copy()*_alpha)
@@ -486,25 +537,48 @@ if __name__ == '__main__':
         
         
     plt.figure()
-    plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E, label='absorbent everywhere')
-    plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_grad, label='gradient descent')
-    #plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_multi, label='multi')
-    #plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_rand, label='random')
-    #plt.plot(alpha_ISOREL_OMEGA[::skip]/2/np.pi, _E_start, label='start point')
+    plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_isorel, label='ISOREL absorbent everywhere')
+    #plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_liner, label='LINER')
+    #plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_aero, label='AERO')
+    #plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_grad, label='grad')
+    plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_multi_isorel, label='ISOREL multi')
+    plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_multi_liner, label='LINER multi')
+    plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_multi_aero, label='AERO multi')
+    #plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_multi1, label='ISOREL')
+    #plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_rand, label='random')
+    #plt.plot(alpha_OMEGA[::skip]/2/np.pi, _E_start, label='start point')
     plt.xlabel('frequency')
     plt.ylabel('energy')
     plt.yscale('log')
     plt.legend(loc='upper right')
     
-    plt.savefig('energy_freq.png')
+    plt.figure()
+    plt.plot(_energy_multi_aero, label='AERO multi')
+    plt.plot(_energy_multi_liner, label='LINER multi')
+    plt.plot(_energy_multi_isorel, label='ISOREL multi')
+    
+    plt.legend(loc='upper right')
+    
+    plt.show()
+    
+    #plt.savefig('energy_freq.png')
 
+    #chi, energy = _chi_multi, _energy_multi
+    
+    """l = []
+    m = 10
+    for V_obj in tqdm(np.linspace(0, 1, 10)):
+    
+        _, energy, u, grad = optimization_procedure(domain_omega, spacestep, wavenumber, f, f_dir, f_neu, f_rob,
+                                                            beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
+                                                            Alpha, mu, chi.copy(), V_obj)
+        l.append(np.min(energy))
+    
+    plt.plot(np.linspace(0, 1, 10), l)
+    plt.show()"""
     
     
-    """chi, energy, u, grad = optimization_procedure(domain_omega, spacestep, wavenumber, f, f_dir, f_neu, f_rob,
-                                                        beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
-                                                        Alpha, mu, chi, V_obj)
-    
-    #chi, energy, u, grad = multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, f_neu, f_rob,
+    """#chi, energy, u, grad = multi_optimization_procedure(domain_omega, spacestep, list_omega, f, f_dir, f_neu, f_rob,
     #                                                    beta_pde, alpha_pde, alpha_dir, beta_neu, beta_rob, alpha_rob,
     #                                                    Alpha, mu, chi, V_obj)
     #u = u[0]
@@ -519,4 +593,5 @@ if __name__ == '__main__':
     err = un - u0
     postprocessing._plot_error(err)
     postprocessing._plot_energy_history(energy)
+    
     print('End.')"""
